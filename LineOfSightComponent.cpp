@@ -8,6 +8,7 @@
 #include "IEnemyVisibilityInterface.h"  
 #include "GhostActor.h"
 #include "Animation/AnimInstance.h"  
+#include "Components/PoseableMeshComponent.h"
 #include "Logging/LogMacros.h"  
 
 // Define the log category for LineOfSightComponent    
@@ -36,8 +37,6 @@ void ULineOfSightComponent::BeginPlay()
 void ULineOfSightComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-    // PerformConeTrace();    
 }
 
 void ULineOfSightComponent::PerformConeTrace()
@@ -136,35 +135,45 @@ void ULineOfSightComponent::PerformConeTrace()
                 // Log that the actor is now hidden      
                 UE_LOG(LogLineOfSightComponent, Log, TEXT("Actor %s is now HIDDEN"), *PreviouslyVisibleEnemy->GetName());
 
-                // Spawn the ghost actor at the last known position of the enemy        
+                // Spawn the ghost actor at the last known position of the enemy          
                 if (!GhostActorsMap.Contains(PreviouslyVisibleEnemy))
                 {
                     USkeletalMeshComponent* EnemySkeletalMesh = Cast<USkeletalMeshComponent>(PreviouslyVisibleEnemy->GetComponentByClass(USkeletalMeshComponent::StaticClass()));
                     if (EnemySkeletalMesh && EnemySkeletalMesh->SkeletalMesh)
                     {
-                        // Create a new actor for the ghost  
-                        AActor* GhostActor = GetWorld()->SpawnActor<AActor>(AGhostActor::StaticClass(), EnemySkeletalMesh->GetComponentTransform());
+                        // Create a new actor for the ghost    
+                        AGhostActor* GhostActor = GetWorld()->SpawnActor<AGhostActor>(AGhostActor::StaticClass(), EnemySkeletalMesh->GetComponentTransform());
 
-                        // Create a new skeletal mesh component for the ghost actor  
-                        USkeletalMeshComponent* GhostSkeletalMesh = NewObject<USkeletalMeshComponent>(GhostActor);
-                        if (GhostSkeletalMesh)
+                        // Create a new poseable mesh component for the ghost actor    
+                        UPoseableMeshComponent* GhostPoseableMesh = NewObject<UPoseableMeshComponent>(GhostActor);
+                        if (GhostPoseableMesh)
                         {
-                            GhostActor->AddInstanceComponent(GhostSkeletalMesh);
-                            GhostSkeletalMesh->RegisterComponent();
-                            GhostSkeletalMesh->SetSkeletalMesh(EnemySkeletalMesh->SkeletalMesh);
-                            GhostSkeletalMesh->SetWorldTransform(EnemySkeletalMesh->GetComponentTransform());
-                            GhostSkeletalMesh->SetMaterial(0, GhostMaterial); // Set the ghost material  
-                            GhostSkeletalMesh->SetMaterial(1, GhostMaterial); // Set the ghost material  
+                            GhostActor->AddInstanceComponent(GhostPoseableMesh);
+                            GhostPoseableMesh->RegisterComponent();
+                            GhostPoseableMesh->SetSkeletalMesh(EnemySkeletalMesh->SkeletalMesh);
+                            GhostPoseableMesh->SetWorldTransform(EnemySkeletalMesh->GetComponentTransform());
+                            GhostPoseableMesh->SetMaterial(0, GhostMaterial); // Set the ghost material    
+                            GhostPoseableMesh->SetMaterial(1, GhostMaterial); // Set the ghost material    
 
-                            // Disable physics and collision  
-                            GhostSkeletalMesh->SetSimulatePhysics(false);
-                            GhostSkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-                            GhostSkeletalMesh->SetVisibility(true);
+                            // Disable physics and collision    
+                            GhostPoseableMesh->SetSimulatePhysics(false);
+                            GhostPoseableMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                            GhostPoseableMesh->SetVisibility(true);
 
-                            // Set up the ghost info and timer to destroy the ghost  
+                            // Copy the pose from the enemy's skeletal mesh to the ghost's poseable mesh  
+                            const int32 NumBones = EnemySkeletalMesh->GetNumBones();
+                            for (int32 BoneIndex = 0; BoneIndex < NumBones; ++BoneIndex)
+                            {
+                                const FName BoneName = EnemySkeletalMesh->GetBoneName(BoneIndex);
+                                const FTransform BoneTransform = EnemySkeletalMesh->GetBoneTransform(BoneIndex);
+
+                                GhostPoseableMesh->SetBoneTransformByName(BoneName, BoneTransform, EBoneSpaces::WorldSpace);
+                            }
+
+                            // Set up the ghost info and timer to destroy the ghost    
                             FGhostInfo NewGhostInfo;
                             NewGhostInfo.GhostActor = GhostActor;
-                            NewGhostInfo.TimeWhenHidden = GetWorld()->GetTimeSeconds(); // Set the time when the enemy was hidden  
+                            NewGhostInfo.TimeWhenHidden = GetWorld()->GetTimeSeconds(); // Set the time when the enemy was hidden    
                             GhostActorsMap.Add(PreviouslyVisibleEnemy, NewGhostInfo);
                         }
                     }
@@ -207,12 +216,22 @@ void ULineOfSightComponent::PerformConeTrace()
         }
     }
 
-void ULineOfSightComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-    Super::EndPlay(EndPlayReason);
-    // Clear the timer to ensure it doesn't try to call back to a destroyed component      
-    if (GetWorld())
-    {
-        GetWorld()->GetTimerManager().ClearTimer(VisibilityCheckTimerHandle);
-    }
-}
+void ULineOfSightComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)  
+{  
+    Super::EndPlay(EndPlayReason);  
+    // Clear the timer to ensure it doesn't try to call back to a destroyed component  
+    if (GetWorld())  
+    {  
+        GetWorld()->GetTimerManager().ClearTimer(VisibilityCheckTimerHandle);  
+    }  
+  
+    // Destroy all ghost actors to clean up  
+    for (auto& GhostPair : GhostActorsMap)  
+    {  
+        if (GhostPair.Value.GhostActor)  
+        {  
+            GhostPair.Value.GhostActor->Destroy();  
+        }  
+    }  
+    GhostActorsMap.Empty(); // Clear the map since we've destroyed all ghost actors  
+}  

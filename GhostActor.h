@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"  
 #include "GameFramework/Actor.h"  
+#include "Components/PoseableMeshComponent.h"
 #include "GhostActor.generated.h"  
 
 UCLASS()
@@ -19,10 +20,7 @@ protected:
     virtual void BeginPlay() override;
 
 public:
-    // Called every frame  
-    virtual void Tick(float DeltaTime) override;
-
-    // Skeletal Mesh Component for the ghost actor  
+    // Posable Mesh Component for the ghost actor  
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    class USkeletalMeshComponent* GhostSkeletalMesh;
+    class UPoseableMeshComponent* GhostPoseableMesh;
 };
