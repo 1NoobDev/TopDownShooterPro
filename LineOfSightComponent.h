@@ -2,11 +2,8 @@
 
 #include "CoreMinimal.h"  
 #include "Components/ActorComponent.h"  
-#include "GameFramework/Actor.h" 
-#include <Set> 
 #include "TimerManager.h"  
-#include "Engine/DecalActor.h"  
-#include "LineOfSightComponent.generated.h"  
+#include "LineOfSightComponent.generated.h" 
 
 // Define the log category for LineOfSightComponent  
 DECLARE_LOG_CATEGORY_EXTERN(LogLineOfSightComponent, Log, All);
@@ -35,9 +32,18 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+    // Bool to enable/disable the LineOfSightComponent functionality  
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LineOfSight")
+    bool bIsLineOfSightEnabled;
+
+    // Call this function to disable the line of sight and remove ghost actors  
+    UFUNCTION(BlueprintCallable, Category = "LineOfSight")
+    void DisableLineOfSightAndCleanup();
 
     // The distance of the cone trace.  
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LineOfSight")
@@ -62,22 +68,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LineOfSight")
     bool bDrawDebug;
 
+    // Material for the Ghost Actor
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LineOfSight")
     UMaterialInterface* GhostMaterial;
 
 private:
-    // Perform a cone trace to check for enemies in line of sight.  
     void PerformConeTrace();
-
-    void EndPlay(const EEndPlayReason::Type EndPlayReason);
-
-    // Maintain a list of visible enemies
     TSet<AActor*> VisibleEnemies;
     FTimerHandle VisibilityCheckTimerHandle;
-
-    // Map to keep track of ghost actors and their destroy timers  
     TMap<AActor*, FGhostInfo> GhostActorsMap;
 
-    // Function to handle the destruction of ghost actors  
+    void PerformVisibilityCheck(TSet<AActor*>& OutCurrentlyVisibleEnemies);
+    void UpdateVisibilityStates(const TSet<AActor*>& CurrentlyVisibleEnemies);
+    void HandleActorVisibilityChange(AActor* Actor, bool bIsNowVisible);
+    void SpawnGhostActor(AActor* EnemyActor);
+    void UpdateGhostActors(const TSet<AActor*>& CurrentlyVisibleEnemies);
     void DestroyGhostActor(AActor* EnemyActor);
 };
